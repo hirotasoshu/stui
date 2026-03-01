@@ -146,6 +146,13 @@ func (d *TorrentDownloader) MoveDLCs() error {
 				dstPath := filepath.Join(d.gamePath, name)
 				logger.Logger.Debug("Moving DLC", zap.String("from", srcPath), zap.String("to", dstPath))
 
+				if _, err := os.Stat(dstPath); err == nil {
+					if err := os.RemoveAll(dstPath); err != nil {
+						logger.Logger.Error("Failed to remove existing DLC", zap.String("path", dstPath), zap.Error(err))
+						return fmt.Errorf("failed to remove existing DLC %s: %w", name, err)
+					}
+				}
+
 				err := os.Rename(srcPath, dstPath)
 				if err != nil {
 					logger.Logger.Error("Failed to move DLC", zap.String("from", srcPath), zap.String("to", dstPath), zap.Error(err))
@@ -180,6 +187,13 @@ func (d *TorrentDownloader) MoveDLCs() error {
 				dstPath := filepath.Join(gameInstallerPath, name)
 				logger.Logger.Debug("Moving installer DLC", zap.String("from", srcPath), zap.String("to", dstPath))
 
+				if _, err := os.Stat(dstPath); err == nil {
+					if err := os.RemoveAll(dstPath); err != nil {
+						logger.Logger.Error("Failed to remove existing installer DLC", zap.String("path", dstPath), zap.Error(err))
+						return fmt.Errorf("failed to remove existing installer DLC %s: %w", name, err)
+					}
+				}
+
 				err := os.Rename(srcPath, dstPath)
 				if err != nil {
 					logger.Logger.Error("Failed to move installer DLC", zap.String("from", srcPath), zap.String("to", dstPath), zap.Error(err))
@@ -200,8 +214,9 @@ func (d *TorrentDownloader) DeleteTempDir() error {
 
 	err := os.RemoveAll(tempGamePath)
 	if err != nil {
-		logger.Logger.Error("Failed to remove temp directory", zap.String("path", tempGamePath), zap.Error(err))
-		return fmt.Errorf("failed to remove temp directory: %w", err)
+		// Best-effort cleanup: DLCs were already moved, so just log the warning
+		logger.Logger.Warn("Failed to remove temp directory (will be cleaned up later)", zap.String("path", tempGamePath), zap.Error(err))
+		return nil
 	}
 
 	logger.Logger.Debug("Successfully removed temp directory")

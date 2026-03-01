@@ -88,20 +88,46 @@ func (p *DownloadingPage) StartDownload(downloader application.DlcDownloader, dl
 	p.downloader = downloader
 	p.Completed = false
 	p.cleanedUp = false
-	go func() {
-		if err := downloader.Download(dlcs, gamePath); err != nil {
-			p.err = err
-		}
-	}()
-	return tickCmd()
+	return downloadCmd(downloader, dlcs, gamePath)
+}
+
+type downloadReadyMsg struct {
+	err error
+}
+
+func downloadCmd(downloader application.DlcDownloader, dlcs []domain.DLC, gamePath string) tea.Cmd {
+	return func() tea.Msg {
+		err := downloader.Download(dlcs, gamePath)
+		return downloadReadyMsg{err: err}
+	}
 }
 
 type tickMsg time.Time
+
+type cleanupDoneMsg struct {
+	err error
+}
 
 func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func cleanupCmd(downloader application.DlcDownloader) tea.Cmd {
+	return func() tea.Msg {
+		if err := downloader.Stop(); err != nil {
+			return cleanupDoneMsg{err: err}
+		}
+		time.Sleep(3 * time.Second)
+		if err := downloader.MoveDLCs(); err != nil {
+			return cleanupDoneMsg{err: err}
+		}
+		if err := downloader.DeleteTempDir(); err != nil {
+			return cleanupDoneMsg{err: err}
+		}
+		return cleanupDoneMsg{}
+	}
 }
 
 func (p DownloadingPage) Update(msg tea.Msg) (DownloadingPage, tea.Cmd) {
@@ -110,25 +136,34 @@ func (p DownloadingPage) Update(msg tea.Msg) (DownloadingPage, tea.Cmd) {
 		p.width = msg.Width
 		p.height = msg.Height
 		p.progressBar.Width = max(0, msg.Width-4)
+	case downloadReadyMsg:
+		if msg.err != nil {
+			p.err = msg.err
+			return p, nil
+		}
+		return p, tickCmd()
 	case tickMsg:
 		if p.downloader != nil && !p.Completed {
 			prog := p.downloader.GetProgress()
 			if prog.BytesDownloaded >= prog.TotalBytes && prog.TotalBytes > 0 {
 				p.Completed = true
-				go func() {
-					p.downloader.MoveDLCs()
-					p.downloader.DeleteTempDir()
-					p.cleanedUp = true
-				}()
+				return p, cleanupCmd(p.downloader)
 			}
 		}
 		return p, tickCmd()
+	case cleanupDoneMsg:
+		if msg.err != nil {
+			p.err = msg.err
+		} else {
+			p.cleanedUp = true
+		}
+		return p, nil
 	case tea.KeyMsg:
 		if p.Completed && msg.String() == "enter" {
 			return p, nil
 		}
 	}
-	return p, tickCmd()
+	return p, nil
 }
 
 func (p DownloadingPage) GetDownloader() application.DlcDownloader {

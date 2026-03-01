@@ -140,9 +140,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if keyMsg, ok := msg.(tea.KeyMsg); ok {
 			if m.downloadingPage.Completed && keyMsg.String() == "enter" {
-				if m.downloadingPage.GetDownloader() != nil {
-					m.downloadingPage.GetDownloader().Stop()
-				}
 				m.screen = ScreenMenu
 				return m, nil
 			}

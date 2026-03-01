@@ -2,7 +2,6 @@ package pages
 
 import (
 	"fmt"
-	"time"
 
 	"stui/internal/application"
 	"stui/internal/domain"
@@ -50,20 +49,12 @@ func NewUnlockerProcessPage() UnlockerProcessPage {
 	return UnlockerProcessPage{}
 }
 
-type unlockerTickMsg time.Time
-
-func unlockerTickCmd() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
-		return unlockerTickMsg(t)
-	})
+type unlockerDoneMsg struct {
+	err error
 }
 
-func (p *UnlockerProcessPage) Start(unlocker application.IUnlocker, clientInfo domain.EAClientInfo, action UnlockerAction) tea.Cmd {
-	p.action = action
-	p.err = nil
-	p.complete = false
-
-	go func() {
+func unlockerCmd(unlocker application.IUnlocker, clientInfo domain.EAClientInfo, action UnlockerAction) tea.Cmd {
+	return func() tea.Msg {
 		var err error
 		switch action {
 		case UnlockerActionInstallDLL:
@@ -73,11 +64,15 @@ func (p *UnlockerProcessPage) Start(unlocker application.IUnlocker, clientInfo d
 		case UnlockerActionInstallConfig:
 			err = unlocker.InstallConfig(clientInfo)
 		}
-		p.err = err
-		p.complete = true
-	}()
+		return unlockerDoneMsg{err: err}
+	}
+}
 
-	return unlockerTickCmd()
+func (p *UnlockerProcessPage) Start(unlocker application.IUnlocker, clientInfo domain.EAClientInfo, action UnlockerAction) tea.Cmd {
+	p.action = action
+	p.err = nil
+	p.complete = false
+	return unlockerCmd(unlocker, clientInfo, action)
 }
 
 func (p UnlockerProcessPage) IsComplete() bool {
@@ -90,10 +85,9 @@ func (p UnlockerProcessPage) Update(msg tea.Msg) (*UnlockerProcessPage, tea.Cmd)
 		p.width = msg.Width
 		p.height = msg.Height
 
-	case unlockerTickMsg:
-		if !p.complete {
-			return &p, unlockerTickCmd()
-		}
+	case unlockerDoneMsg:
+		p.err = msg.err
+		p.complete = true
 
 	case tea.KeyMsg:
 		if p.complete && msg.String() == "enter" {
@@ -101,9 +95,6 @@ func (p UnlockerProcessPage) Update(msg tea.Msg) (*UnlockerProcessPage, tea.Cmd)
 		}
 	}
 
-	if !p.complete {
-		return &p, unlockerTickCmd()
-	}
 	return &p, nil
 }
 

@@ -10,64 +10,99 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Windows
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            platform: windows-amd64
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
+            platform: windows-arm64
+          # Linux
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            platform: linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            platform: linux-arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: 386
+            platform: linux-386
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Build with xgo
-        uses: crazy-max/ghaction-xgo@v3
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          xgo_version: latest
-          go_version: "1.25"
-          dest: build
-          prefix: stui
-          pkg: ./cmd/stui
-          targets: windows/amd64,windows/arm64,linux/amd64,linux/arm64,linux/386
-          ldflags: -s -w
-          trimpath: true
+          go-version: "1.25"
 
-      - name: Prepare Release Packages
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         run: |
-          mkdir dist
+          # Отключаем CGO только для Windows
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            export CGO_ENABLED=0
+            EXT=".exe"
+          else
+            EXT=""
+          fi
 
-          for bin in build/*; do
-            filename=$(basename "$bin")
+          go build \
+            -ldflags="-s -w" \
+            -trimpath \
+            -o "stui${EXT}" \
+            cmd/stui/main.go
+        shell: bash
 
-            # example: stui-windows-amd64.exe
-            platform=$(echo "$filename" | sed -E 's/stui-(.*)(\.exe)?/\1/')
-
-            mkdir -p "release-$platform/stui"
-            cp -r unlocker "release-$platform/stui/"
-            cp "$bin" "release-$platform/stui/"
-
-            cd "release-$platform"
-            zip -r "../dist/stui-${{ github.ref_name }}-$platform.zip" stui
-            cd ..
-          done
-
-      - name: Upload Release Artifacts
+      - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: release-zips
-          path: dist/*.zip
+          name: binary-${{ matrix.platform }}
+          path: stui*
 
   release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download Release Artifacts
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download All Binaries
         uses: actions/download-artifact@v4
         with:
-          name: release-zips
-          path: dist
+          path: binaries
+
+      - name: Create Release Packages
+        run: |
+          for platform_dir in binaries/binary-*; do
+            platform=$(basename "$platform_dir" | sed 's/binary-//')
+
+            mkdir -p "release-$platform/stui"
+            cp -r unlocker "release-$platform/stui/"
+            cp "$platform_dir"/* "release-$platform/stui/"
+
+            cd "release-$platform"
+            zip -r "../stui-${{ github.ref_name }}-$platform.zip" stui
+            cd ..
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.zip
+          files: stui-${{ github.ref_name }}-*.zip
           tag_name: ${{ github.ref_name }}
           body: "Release ${{ github.ref_name }}"
           generate_release_notes: true

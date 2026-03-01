@@ -14,15 +14,12 @@ jobs:
     strategy:
       matrix:
         include:
-          # Windows
+          # Windows (только amd64)
           - os: windows-latest
             goos: windows
             goarch: amd64
             platform: windows-amd64
-          - os: windows-latest
-            goos: windows
-            goarch: arm64
-            platform: windows-arm64
+
           # Linux
           - os: ubuntu-latest
             goos: linux
@@ -50,20 +47,25 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
         run: |
-          # Отключаем CGO только для Windows
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            export CGO_ENABLED=0
-            EXT=".exe"
-          else
-            EXT=""
-          fi
+            echo "Building Windows static (amd64 only)"
 
-          go build \
-            -ldflags="-s -w" \
-            -trimpath \
-            -o "stui${EXT}" \
-            cmd/stui/main.go
+            go build \
+              -ldflags="-s -w -linkmode=external -extldflags=-static" \
+              -trimpath \
+              -o stui.exe \
+              cmd/stui/main.go
+          else
+            echo "Building Linux"
+
+            go build \
+              -ldflags="-s -w" \
+              -trimpath \
+              -o stui \
+              cmd/stui/main.go
+          fi
         shell: bash
 
       - name: Upload Binary

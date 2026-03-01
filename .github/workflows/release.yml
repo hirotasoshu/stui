@@ -45,16 +45,24 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-
       - name: Build Binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+       env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 1
         run: |
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -ldflags="-s -w" -trimpath -o stui.exe cmd/stui/main.go
+            go build \
+              -ldflags="-s -w -linkmode=external -extldflags '-static'" \
+              -trimpath \
+              -o stui.exe \
+              cmd/stui/main.go
           else
-            go build -ldflags="-s -w" -trimpath -o stui cmd/stui/main.go
+            go build \
+              -ldflags="-s -w" \
+              -trimpath \
+              -o stui \
+              cmd/stui/main.go
           fi
         shell: bash
 

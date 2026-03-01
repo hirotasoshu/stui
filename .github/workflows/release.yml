@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Windows
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            platform: windows-amd64
+          - os: windows-latest
+            goos: windows
+            goarch: arm64
+            platform: windows-arm64
+          # Linux
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            platform: linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            platform: linux-arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: 386
+            platform: linux-386
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -ldflags="-s -w" -trimpath -o stui.exe cmd/stui/main.go
+          else
+            go build -ldflags="-s -w" -trimpath -o stui cmd/stui/main.go
+          fi
+        shell: bash
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: stui*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download All Binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+
+      - name: Create Release Packages
+        run: |
+          for platform_dir in binaries/binary-*; do
+            platform=$(basename "$platform_dir" | sed 's/binary-//')
+            
+            mkdir -p "release-$platform/stui"
+            cp -r unlocker "release-$platform/stui/"
+            cp "$platform_dir"/* "release-$platform/stui/"
+            
+            cd "release-$platform"
+            zip -r "../stui-${{ github.ref_name }}-$platform.zip" stui
+            cd ..
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: stui-${{ github.ref_name }}-*.zip
+          tag_name: ${{ github.ref_name }}
+          body: "Release ${{ github.ref_name }}"
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

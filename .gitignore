@@ -6,7 +6,6 @@
 *.exe~
 *.so
 *.dylib
-stui
 
 # Test binary, built with `go test -c`
 *.test

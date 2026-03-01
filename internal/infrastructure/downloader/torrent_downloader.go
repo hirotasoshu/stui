@@ -81,7 +81,7 @@ func (d *TorrentDownloader) Download(dlcs []domain.DLC, gamePath string) error {
 
 	for _, file := range files {
 		filePath := file.Path()
-		parts := strings.Split(filePath, string(filepath.Separator))
+		parts := strings.Split(filePath, "/")
 
 		if len(parts) < 2 {
 			continue

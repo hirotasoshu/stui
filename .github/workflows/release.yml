@@ -45,11 +45,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+
       - name: Build Binary
-       env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-        CGO_ENABLED: 1
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
         run: |
           if [ "${{ matrix.goos }}" = "windows" ]; then
             go build \
@@ -88,11 +89,11 @@ jobs:
         run: |
           for platform_dir in binaries/binary-*; do
             platform=$(basename "$platform_dir" | sed 's/binary-//')
-            
+
             mkdir -p "release-$platform/stui"
             cp -r unlocker "release-$platform/stui/"
             cp "$platform_dir"/* "release-$platform/stui/"
-            
+
             cd "release-$platform"
             zip -r "../stui-${{ github.ref_name }}-$platform.zip" stui
             cd ..

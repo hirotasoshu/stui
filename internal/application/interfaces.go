@@ -6,15 +6,14 @@ type DownloadProgress struct {
 	BytesDownloaded int64
 	TotalBytes      int64
 	Speed           int64
+	IsComplete      bool
 }
 
 type DlcDownloader interface {
 	Download(dlcs []domain.DLC, gamePath string) error
 	GetProgress() DownloadProgress
-	IsComplete() bool
 	Stop() error
-	MoveDLCs() error
-	DeleteTempDir() error
+	Finalize() error
 }
 
 type IUnlocker interface {

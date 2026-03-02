@@ -10,6 +10,7 @@ import (
 	"stui/internal/application"
 	"stui/internal/domain"
 	"stui/internal/infrastructure/logger"
+	"stui/internal/utils"
 
 	"github.com/anacrolix/torrent"
 	"go.uber.org/zap"
@@ -153,7 +154,7 @@ func (d *TorrentDownloader) MoveDLCs() error {
 					}
 				}
 
-				err := os.Rename(srcPath, dstPath)
+				err := utils.MoveDir(srcPath, dstPath)
 				if err != nil {
 					logger.Logger.Error("Failed to move DLC", zap.String("from", srcPath), zap.String("to", dstPath), zap.Error(err))
 					return fmt.Errorf("failed to move DLC %s: %w", name, err)
@@ -194,7 +195,7 @@ func (d *TorrentDownloader) MoveDLCs() error {
 					}
 				}
 
-				err := os.Rename(srcPath, dstPath)
+				err := utils.MoveDir(srcPath, dstPath)
 				if err != nil {
 					logger.Logger.Error("Failed to move installer DLC", zap.String("from", srcPath), zap.String("to", dstPath), zap.Error(err))
 					return fmt.Errorf("failed to move installer DLC %s: %w", name, err)
@@ -211,6 +212,8 @@ func (d *TorrentDownloader) MoveDLCs() error {
 func (d *TorrentDownloader) DeleteTempDir() error {
 	tempGamePath := filepath.Join(os.TempDir(), "The Sims 4")
 	logger.Logger.Debug("Removing temp directory", zap.String("path", tempGamePath))
+
+	time.Sleep(2 * time.Second)
 
 	err := os.RemoveAll(tempGamePath)
 	if err != nil {
@@ -277,11 +280,20 @@ func (d *TorrentDownloader) GetProgress() application.DownloadProgress {
 func (d *TorrentDownloader) Stop() error {
 	logger.Logger.Debug("Stopping downloader")
 	if d.torrent != nil {
-		d.torrent.Drop()
+		d.safeDrop()
 		d.torrent = nil
 	}
 	if d.client != nil {
-		d.client.Close()
+		errs := d.client.Close()
+		if len(errs) > 0 {
+			logger.Logger.Warn("Errors while closing torrent client", zap.Int("count", len(errs)))
+		}
+		d.client = nil
 	}
 	return nil
+}
+
+func (d *TorrentDownloader) safeDrop() {
+	defer func() { _ = recover() }()
+	d.torrent.Drop()
 }

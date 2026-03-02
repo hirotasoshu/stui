@@ -119,7 +119,6 @@ func cleanupCmd(downloader application.DlcDownloader) tea.Cmd {
 		if err := downloader.Stop(); err != nil {
 			return cleanupDoneMsg{err: err}
 		}
-		time.Sleep(3 * time.Second)
 		if err := downloader.MoveDLCs(); err != nil {
 			return cleanupDoneMsg{err: err}
 		}
@@ -144,8 +143,7 @@ func (p DownloadingPage) Update(msg tea.Msg) (DownloadingPage, tea.Cmd) {
 		return p, tickCmd()
 	case tickMsg:
 		if p.downloader != nil && !p.Completed {
-			prog := p.downloader.GetProgress()
-			if prog.BytesDownloaded >= prog.TotalBytes && prog.TotalBytes > 0 {
+			if p.downloader.IsComplete() {
 				p.Completed = true
 				return p, cleanupCmd(p.downloader)
 			}

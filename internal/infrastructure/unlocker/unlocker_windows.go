@@ -11,6 +11,7 @@ import (
 	"stui/internal/application"
 	"stui/internal/domain"
 	"stui/internal/infrastructure/logger"
+	"stui/internal/utils"
 
 	"go.uber.org/zap"
 	"golang.org/x/sys/windows"
@@ -113,7 +114,7 @@ func (u *Unlocker) InstallDLL(clientInfo domain.EAClientInfo) error {
 		if appDataDir != "" {
 			configDir := filepath.Join(appDataDir, "anadius", "EA DLC Unlocker v2")
 			if err := os.MkdirAll(configDir, 0o755); err == nil {
-				if err := copyFile(srcMainConfig, filepath.Join(configDir, "config.ini")); err != nil {
+				if err := utils.CopyFile(srcMainConfig, filepath.Join(configDir, "config.ini")); err != nil {
 					logger.Logger.Warn("Failed to copy config.ini during DLL install", zap.Error(err))
 				} else {
 					logger.Logger.Debug("config.ini installed", zap.String("path", configDir))
@@ -184,19 +185,11 @@ func (u *Unlocker) InstallConfig(clientInfo domain.EAClientInfo) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	if err := copyFile(srcGameConfig, filepath.Join(configDir, "g_The Sims 4.ini")); err != nil {
+	if err := utils.CopyFile(srcGameConfig, filepath.Join(configDir, "g_The Sims 4.ini")); err != nil {
 		return fmt.Errorf("failed to copy game config: %w", err)
 	}
 	logger.Logger.Debug("Game config copied", zap.String("path", configDir))
 
 	logger.Logger.Debug("Config installation completed successfully")
 	return nil
-}
-
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0o644)
 }

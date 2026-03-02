@@ -11,6 +11,7 @@ type DownloadProgress struct {
 type DlcDownloader interface {
 	Download(dlcs []domain.DLC, gamePath string) error
 	GetProgress() DownloadProgress
+	IsComplete() bool
 	Stop() error
 	MoveDLCs() error
 	DeleteTempDir() error

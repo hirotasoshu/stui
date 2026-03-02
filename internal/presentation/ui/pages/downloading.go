@@ -114,18 +114,15 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func cleanupCmd(downloader application.DlcDownloader) tea.Cmd {
+func finalizeCmd(downloader application.DlcDownloader) tea.Cmd {
 	return func() tea.Msg {
-		if err := downloader.Stop(); err != nil {
-			return cleanupDoneMsg{err: err}
-		}
-		if err := downloader.MoveDLCs(); err != nil {
-			return cleanupDoneMsg{err: err}
-		}
-		if err := downloader.DeleteTempDir(); err != nil {
-			return cleanupDoneMsg{err: err}
-		}
-		return cleanupDoneMsg{}
+		return cleanupDoneMsg{err: downloader.Finalize()}
+	}
+}
+
+func stopDownloadCmd(downloader application.DlcDownloader) tea.Cmd {
+	return func() tea.Msg {
+		return cleanupDoneMsg{err: downloader.Stop()}
 	}
 }
 
@@ -143,9 +140,10 @@ func (p DownloadingPage) Update(msg tea.Msg) (DownloadingPage, tea.Cmd) {
 		return p, tickCmd()
 	case tickMsg:
 		if p.downloader != nil && !p.Completed {
-			if p.downloader.IsComplete() {
+			prog := p.downloader.GetProgress()
+			if prog.IsComplete {
 				p.Completed = true
-				return p, cleanupCmd(p.downloader)
+				return p, finalizeCmd(p.downloader)
 			}
 		}
 		return p, tickCmd()

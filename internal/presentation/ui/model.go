@@ -143,6 +143,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = ScreenMenu
 				return m, nil
 			}
+			if keyMsg.String() == "q" || keyMsg.String() == "ctrl+c" {
+				downloader := m.downloadingPage.GetDownloader()
+				m.screen = ScreenMenu
+				if downloader != nil {
+					return m, func() tea.Msg {
+						_ = downloader.Stop()
+						return nil
+					}
+				}
+				return m, nil
+			}
 		}
 
 		return m, cmd

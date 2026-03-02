@@ -12,9 +12,26 @@ import (
 	"stui/internal/infrastructure/logger"
 	"stui/internal/utils"
 
+	anacrologix "github.com/anacrolix/log"
 	"github.com/anacrolix/torrent"
 	"go.uber.org/zap"
 )
+
+// zapHandler redirects anacrolix/torrent library logs to our zap logger.
+// Debug-level messages are dropped; Info/Warning go to zap Debug; Error+ go to zap Error.
+type zapHandler struct{}
+
+func (zapHandler) Handle(r anacrologix.Record) {
+	if r.Level.LessThan(anacrologix.Info) {
+		return
+	}
+	msg := "[torrent] " + r.Msg.String()
+	if r.Level.LessThan(anacrologix.Error) {
+		logger.Logger.Debug(msg)
+	} else {
+		logger.Logger.Error(msg)
+	}
+}
 
 const magnetLink = "magnet:?xt=urn:btih:DBF793BE2FECECA6BACA0B836B283F399CF70F53&tr=http%3A%2F%2Fbt2.t-ru.org%2Fann%3Fmagnet&dn=%5BDL%5D%20The%20Sims%204%20%5BP%5D%20%5BRUS%20%2B%20ENG%20%2B%2016%5D%20(2014%2C%20Simulation)%20(1.121.372.1020%20%2B%20111%20DLC)%20%5BPortable%5D"
 
@@ -24,7 +41,7 @@ type TorrentDownloader struct {
 	selectedSize  int64
 	selectedDLCs  map[string]bool
 	gamePath      string
-	lastBytes     int64
+	lastNetBytes  int64
 	lastTime      time.Time
 	speed         int64
 	selectedFiles []*torrent.File
@@ -47,6 +64,8 @@ func (d *TorrentDownloader) Download(dlcs []domain.DLC, gamePath string) error {
 	cfg := torrent.NewDefaultClientConfig()
 	cfg.Seed = false
 	cfg.DataDir = os.TempDir()
+	cfg.Logger = anacrologix.NewLogger("torrent")
+	cfg.Logger.SetHandlers(zapHandler{})
 
 	client, err := torrent.NewClient(cfg)
 	if err != nil {
@@ -126,7 +145,15 @@ func (d *TorrentDownloader) Download(dlcs []domain.DLC, gamePath string) error {
 	return nil
 }
 
-func (d *TorrentDownloader) MoveDLCs() error {
+func (d *TorrentDownloader) Finalize() error {
+	d.Stop()
+	if err := d.moveDLCs(); err != nil {
+		return err
+	}
+	return d.deleteTempDir()
+}
+
+func (d *TorrentDownloader) moveDLCs() error {
 	logger.Logger.Debug("Moving DLCs from temp to game path")
 
 	tempGamePath := filepath.Join(os.TempDir(), "The Sims 4")
@@ -209,7 +236,7 @@ func (d *TorrentDownloader) MoveDLCs() error {
 	return nil
 }
 
-func (d *TorrentDownloader) DeleteTempDir() error {
+func (d *TorrentDownloader) deleteTempDir() error {
 	tempGamePath := filepath.Join(os.TempDir(), "The Sims 4")
 	logger.Logger.Debug("Removing temp directory", zap.String("path", tempGamePath))
 
@@ -233,48 +260,46 @@ func isDLCCode(name string) bool {
 		strings.HasPrefix(name, "FP")
 }
 
-func (d *TorrentDownloader) IsComplete() bool {
-	if d.torrent == nil || len(d.selectedFiles) == 0 {
-		return false
-	}
-	for _, file := range d.selectedFiles {
-		if file.BytesCompleted() < file.Length() {
-			return false
-		}
-	}
-	return true
-}
-
 func (d *TorrentDownloader) GetProgress() application.DownloadProgress {
 	if d.torrent == nil {
 		return application.DownloadProgress{}
 	}
 
-	var bytesDownloaded int64 = 0
-	for _, file := range d.selectedFiles {
-		bytesDownloaded += file.BytesCompleted()
-	}
-
-	totalBytes := d.selectedSize
-	if totalBytes == 0 {
-		totalBytes = d.torrent.Length()
-	}
-
+	// Speed: network receive bytes (BytesReadUsefulData = downloaded from peers, not uploaded)
+	stats := d.torrentStats()
+	netBytes := stats.BytesReadUsefulData.Int64()
 	now := time.Now()
 	timeDiff := now.Sub(d.lastTime).Seconds()
-
 	if timeDiff >= 1.0 {
-		bytesDiff := bytesDownloaded - d.lastBytes
-		d.speed = int64(float64(bytesDiff) / timeDiff)
-		d.lastBytes = bytesDownloaded
+		netDiff := netBytes - d.lastNetBytes
+		d.speed = int64(float64(netDiff) / timeDiff)
+		d.lastNetBytes = netBytes
 		d.lastTime = now
 	}
 
-	return application.DownloadProgress{
-		BytesDownloaded: bytesDownloaded,
-		TotalBytes:      totalBytes,
-		Speed:           d.speed,
+	// Progress + IsComplete: always use file.BytesCompleted() — includes pre-existing verified data
+	// (unlike BytesReadUsefulData which is network-only and never reaches selectedSize if data was on disk)
+	var bytesCompleted int64
+	isComplete := len(d.selectedFiles) > 0
+	for _, file := range d.selectedFiles {
+		fc := file.BytesCompleted()
+		bytesCompleted += fc
+		if fc < file.Length() {
+			isComplete = false
+		}
 	}
+
+	return application.DownloadProgress{
+		BytesDownloaded: min(bytesCompleted, d.selectedSize),
+		TotalBytes:      d.selectedSize,
+		Speed:           d.speed,
+		IsComplete:      isComplete,
+	}
+}
+
+func (d *TorrentDownloader) torrentStats() torrent.TorrentStats {
+	defer func() { _ = recover() }()
+	return d.torrent.Stats()
 }
 
 func (d *TorrentDownloader) Stop() error {

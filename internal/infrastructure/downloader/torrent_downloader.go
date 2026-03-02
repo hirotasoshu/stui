@@ -230,6 +230,18 @@ func isDLCCode(name string) bool {
 		strings.HasPrefix(name, "FP")
 }
 
+func (d *TorrentDownloader) IsComplete() bool {
+	if d.torrent == nil || len(d.selectedFiles) == 0 {
+		return false
+	}
+	for _, file := range d.selectedFiles {
+		if file.BytesCompleted() < file.Length() {
+			return false
+		}
+	}
+	return true
+}
+
 func (d *TorrentDownloader) GetProgress() application.DownloadProgress {
 	if d.torrent == nil {
 		return application.DownloadProgress{}

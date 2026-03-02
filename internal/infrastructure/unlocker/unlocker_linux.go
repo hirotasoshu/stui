@@ -84,6 +84,21 @@ func (u *Unlocker) InstallDLL(clientInfo domain.EAClientInfo) error {
 	}
 	logger.Logger.Debug("DLL override added to registry", zap.String("reg_file", regFile))
 
+	// Also install main config alongside DLL
+	srcMainConfig := filepath.Join(unlockerDir, "config.ini")
+	if _, err := os.Stat(srcMainConfig); err == nil {
+		username := getPrefixUsername(clientInfo.WinePrefix, clientInfo.PrefixSource)
+		configDir := filepath.Join(clientInfo.WinePrefix, "drive_c", "users", username,
+			"AppData", "Roaming", "anadius", "EA DLC Unlocker v2")
+		if err := os.MkdirAll(configDir, 0o755); err == nil {
+			if err := copyFile(srcMainConfig, filepath.Join(configDir, "config.ini")); err != nil {
+				logger.Logger.Warn("Failed to copy config.ini during DLL install", zap.Error(err))
+			} else {
+				logger.Logger.Debug("config.ini installed", zap.String("path", configDir))
+			}
+		}
+	}
+
 	logger.Logger.Debug("DLL installation completed successfully", zap.Int("installed_count", installedCount))
 	return nil
 }
@@ -133,16 +148,9 @@ func (u *Unlocker) InstallConfig(clientInfo domain.EAClientInfo) error {
 	}
 
 	unlockerDir := filepath.Join(filepath.Dir(exePath), "unlocker")
-	srcMainConfig := filepath.Join(unlockerDir, "config.ini")
 	srcGameConfig := filepath.Join(unlockerDir, "g_The Sims 4.ini")
-	logger.Logger.Debug("Source configs",
-		zap.String("main_config", srcMainConfig),
-		zap.String("game_config", srcGameConfig))
+	logger.Logger.Debug("Source game config", zap.String("game_config", srcGameConfig))
 
-	if _, err := os.Stat(srcMainConfig); err != nil {
-		logger.Logger.Error("Main config not found", zap.String("path", srcMainConfig), zap.Error(err))
-		return fmt.Errorf("main config not found: %s", srcMainConfig)
-	}
 	if _, err := os.Stat(srcGameConfig); err != nil {
 		logger.Logger.Error("Game config not found", zap.String("path", srcGameConfig), zap.Error(err))
 		return fmt.Errorf("game config not found: %s", srcGameConfig)
@@ -161,15 +169,7 @@ func (u *Unlocker) InstallConfig(clientInfo domain.EAClientInfo) error {
 	}
 	logger.Logger.Debug("Config directory created")
 
-	dstMainConfig := filepath.Join(configDir, "config.ini")
 	dstGameConfig := filepath.Join(configDir, "g_The Sims 4.ini")
-
-	if err := copyFile(srcMainConfig, dstMainConfig); err != nil {
-		logger.Logger.Error("Failed to copy main config", zap.Error(err))
-		return fmt.Errorf("failed to copy main config: %w", err)
-	}
-	logger.Logger.Debug("Main config copied", zap.String("path", dstMainConfig))
-
 	if err := copyFile(srcGameConfig, dstGameConfig); err != nil {
 		logger.Logger.Error("Failed to copy game config", zap.Error(err))
 		return fmt.Errorf("failed to copy game config: %w", err)

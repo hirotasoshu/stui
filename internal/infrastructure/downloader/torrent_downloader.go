@@ -265,20 +265,6 @@ func (d *TorrentDownloader) GetProgress() application.DownloadProgress {
 		return application.DownloadProgress{}
 	}
 
-	// Speed: network receive bytes (BytesReadUsefulData = downloaded from peers, not uploaded)
-	stats := d.torrentStats()
-	netBytes := stats.BytesReadUsefulData.Int64()
-	now := time.Now()
-	timeDiff := now.Sub(d.lastTime).Seconds()
-	if timeDiff >= 1.0 {
-		netDiff := netBytes - d.lastNetBytes
-		d.speed = int64(float64(netDiff) / timeDiff)
-		d.lastNetBytes = netBytes
-		d.lastTime = now
-	}
-
-	// Progress + IsComplete: always use file.BytesCompleted() — includes pre-existing verified data
-	// (unlike BytesReadUsefulData which is network-only and never reaches selectedSize if data was on disk)
 	var bytesCompleted int64
 	isComplete := len(d.selectedFiles) > 0
 	for _, file := range d.selectedFiles {
@@ -287,6 +273,15 @@ func (d *TorrentDownloader) GetProgress() application.DownloadProgress {
 		if fc < file.Length() {
 			isComplete = false
 		}
+	}
+
+	now := time.Now()
+	timeDiff := now.Sub(d.lastTime).Seconds()
+	if timeDiff >= 1.0 {
+		bytesDiff := bytesCompleted - d.lastNetBytes
+		d.speed = int64(float64(bytesDiff) / timeDiff)
+		d.lastNetBytes = bytesCompleted
+		d.lastTime = now
 	}
 
 	return application.DownloadProgress{
